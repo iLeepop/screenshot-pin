@@ -1,0 +1,12 @@
+[package]
+name = "winit-fullscreen"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+debug = []
+
+[dependencies]
+winit = "0.30.12"
+softbuffer = "0.4.1"
+image = { version = "0.25.0", features = ["png", "jpeg"] }

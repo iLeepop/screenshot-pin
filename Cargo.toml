@@ -1,0 +1,27 @@
+[package]
+name = "screenshot-tool"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+debug = []
+
+[dependencies]
+winit = "0.30.12"
+softbuffer = "0.4.1"
+raw-window-handle = "0.6"
+xcap = "0.8.1"
+chrono = "0.4.43"
+image = { version = "0.25.9", features = ["png", "jpeg"] }
+rdev = "0.5.3"
+windows = { version = "0.62.2", features = [
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Threading",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+] }
+
+[workspace]
+members = [
+    "example/winit-fullscreen"
+]
