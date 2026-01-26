@@ -2,8 +2,13 @@ use std::{num::NonZeroU32, rc::Rc};
 
 use image::GenericImageView;
 use softbuffer::{Context, Surface};
-use winit::{application::ApplicationHandler, event::{StartCause, WindowEvent}, event_loop::{ControlFlow, EventLoop, OwnedDisplayHandle}, keyboard::{Key, NamedKey}, raw_window_handle::DisplayHandle, window::{Fullscreen, Window}};
-
+use winit::{
+    application::ApplicationHandler,
+    event::{StartCause, WindowEvent},
+    event_loop::{ControlFlow, EventLoop, OwnedDisplayHandle},
+    keyboard::{Key, NamedKey},
+    window::{Fullscreen, Window},
+};
 
 struct FullscreenApp {
     window: Option<Rc<Window>>,
@@ -24,8 +29,11 @@ impl FullscreenApp {
 }
 
 impl ApplicationHandler for FullscreenApp {
-    fn new_events(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, cause: winit::event::StartCause) {
-
+    fn new_events(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        cause: winit::event::StartCause,
+    ) {
         match cause {
             StartCause::Init => {
                 let window_attributes = Window::default_attributes()
@@ -34,21 +42,30 @@ impl ApplicationHandler for FullscreenApp {
                     .with_fullscreen(Some(Fullscreen::Borderless(None)))
                     .with_visible(false)
                     .with_transparent(false);
-                
-                let w = event_loop.create_window(window_attributes).expect("create fullscreen window");
+
+                let w = event_loop
+                    .create_window(window_attributes)
+                    .expect("create fullscreen window");
                 self.window = Some(Rc::new(w));
-                
+
                 // 创建 window、surface 和 context
                 // link: https://github.com/rust-windowing/softbuffer/blob/master/examples/fruit.rs
                 self.context = Some(Context::new(event_loop.owned_display_handle()).unwrap());
-                let mut surface = Surface::new(self.context.as_ref().unwrap(), self.window.as_ref().unwrap().clone()).unwrap();
+                let mut surface = Surface::new(
+                    self.context.as_ref().unwrap(),
+                    self.window.as_ref().unwrap().clone(),
+                )
+                .unwrap();
 
                 let img = image::load_from_memory(include_bytes!("../img/overlay.png")).unwrap();
 
                 self.image = Some(img.clone());
 
                 surface
-                    .resize(NonZeroU32::new(img.width()).unwrap(), NonZeroU32::new(img.height()).unwrap())
+                    .resize(
+                        NonZeroU32::new(img.width()).unwrap(),
+                        NonZeroU32::new(img.height()).unwrap(),
+                    )
                     .unwrap();
 
                 let mut buffer = surface.buffer_mut().unwrap();
@@ -74,20 +91,18 @@ impl ApplicationHandler for FullscreenApp {
                 self.window.as_ref().unwrap().set_visible(true);
 
                 println!("Fullscreen window created.");
-            },
+            }
 
             _ => {}
         }
-
     }
 
     fn window_event(
-            &mut self,
-            event_loop: &winit::event_loop::ActiveEventLoop,
-            window_id: winit::window::WindowId,
-            event: winit::event::WindowEvent,
-        ) {
-        
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        event: winit::event::WindowEvent,
+    ) {
         match event {
             WindowEvent::CloseRequested => {
                 if let Some(win) = &self.window {
@@ -112,7 +127,6 @@ impl ApplicationHandler for FullscreenApp {
             }
 
             WindowEvent::RedrawRequested => {
-
                 let Some(surface) = &mut self.surface else {
                     return;
                 };
@@ -131,7 +145,6 @@ impl ApplicationHandler for FullscreenApp {
 
                 // 绘制 buffer 内容
                 buffer.present().unwrap();
-
             }
 
             // 解决窗口获得焦点时显示 titlebar 的问题
@@ -142,12 +155,9 @@ impl ApplicationHandler for FullscreenApp {
 
             _ => {}
         }
-
     }
 
-    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        
-    }
+    fn resumed(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {}
 }
 
 fn main() {
@@ -155,7 +165,6 @@ fn main() {
 
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Wait);
-
 
     event_loop.run_app(&mut app).unwrap();
 }

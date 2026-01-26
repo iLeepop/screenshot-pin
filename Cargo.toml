@@ -12,7 +12,8 @@ softbuffer = "0.4.1"
 raw-window-handle = "0.6"
 xcap = "0.8.1"
 chrono = "0.4.43"
-image = { version = "0.25.9", features = ["png", "jpeg"] }
+tray-icon = "0.21.3"
+image = { version = "0.25.9", features = ["png", "ico"] }
 rdev = "0.5.3"
 windows = { version = "0.62.2", features = [
     "Win32_UI_WindowsAndMessaging",
