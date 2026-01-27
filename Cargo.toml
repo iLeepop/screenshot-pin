@@ -3,6 +3,10 @@ name = "screenshot-tool"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "sspin"
+path = "src/main.rs"
+
 [features]
 debug = []
 
@@ -21,6 +25,9 @@ windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
 ] }
+
+[build-dependencies]
+winres = "0.1.12"
 
 [workspace]
 members = [

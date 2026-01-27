@@ -1,18 +1,15 @@
 use chrono::{Datelike, Timelike};
-use image::RgbaImage;
+use image::{ImageReader, RgbaImage};
 use softbuffer::{Context, Surface};
 use std::{
-    num::NonZeroU32,
-    rc::Rc,
-    sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    io::Cursor, num::NonZeroU32, rc::Rc, sync::{Arc, Mutex}, time::{Duration, Instant}
 };
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, OwnedDisplayHandle},
     platform::windows::{CornerPreference, WindowAttributesExtWindows},
-    window::{Window, WindowLevel},
+    window::{Icon, Window, WindowLevel},
 };
 
 use crate::AppEvent;
@@ -86,6 +83,8 @@ impl PreviewWindow {
             .with_decorations(true)
             .with_corner_preference(CornerPreference::RoundSmall)
             .with_title(time_title)
+            .with_window_icon(Some(load_window_icon()))
+            .with_taskbar_icon(Some(load_window_icon()))
             .with_transparent(false)
             .with_inner_size(PhysicalSize::new(width, height))
             .with_position(PhysicalPosition::new(pos.0, pos.1))
@@ -414,4 +413,22 @@ pub fn timestamp_title() -> String {
     );
 
     timestamp
+}
+
+fn load_window_icon() -> Icon {
+    // 编译期嵌入
+    const ICON_BYTES: &[u8] = include_bytes!("../asset/logo.ico");
+
+    // 使用 image 解码 ico
+    let image = ImageReader::new(Cursor::new(ICON_BYTES))
+        .with_guessed_format()
+        .expect("guess image format failed")
+        .decode()
+        .expect("decode ico failed")
+        .to_rgba8();
+
+    let (width, height) = image.dimensions();
+    let rgba = image.into_raw();
+
+    Icon::from_rgba(rgba, width, height).expect("create tray icon failed")
 }

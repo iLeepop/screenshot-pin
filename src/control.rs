@@ -47,7 +47,7 @@ impl Control {
         let tray_icon = TrayIconBuilder::new()
             .with_icon(load_icon())
             .with_menu(Box::new(menu))
-            .with_tooltip("Screenshot Tool")
+            .with_tooltip("sspin")
             .build()
             .expect("Failed to create tray icon");
 
