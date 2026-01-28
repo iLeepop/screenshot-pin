@@ -392,6 +392,11 @@ impl ApplicationHandler<AppEvent> for ScreenshotApp {
 fn main() {
     use winit::event_loop::{ControlFlow, EventLoop};
 
+    if !ensure_single_instance() {
+        eprintln!("application in running");
+        return;
+    }
+
     let event_loop = EventLoop::<AppEvent>::with_user_event().build().unwrap();
     event_loop.set_control_flow(ControlFlow::Wait);
 
@@ -411,4 +416,31 @@ fn run_event_loop(app: &mut ScreenshotApp, event_loop: EventLoop<AppEvent>) {
     }
 
     event_loop.run_app(app).unwrap();
+}
+
+// 检测windows系统 该应用进程是否已经开启
+fn ensure_single_instance() -> bool {
+    use windows::Win32::{
+        Foundation::{GetLastError, ERROR_ALREADY_EXISTS},
+        System::Threading::CreateMutexW,
+    };
+    use windows::core::PCWSTR;
+
+    let name = "Global\\SSPIN_SingleInstance";
+
+    let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+
+    unsafe {
+        let handle = CreateMutexW(
+            None,
+            false,
+            PCWSTR(wide.as_ptr()),
+        );
+
+        if handle.is_err() {
+            return false;
+        }
+
+        GetLastError() != ERROR_ALREADY_EXISTS
+    }
 }

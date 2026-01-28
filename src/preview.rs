@@ -417,7 +417,7 @@ pub fn timestamp_title() -> String {
 
 fn load_window_icon() -> Icon {
     // 编译期嵌入
-    const ICON_BYTES: &[u8] = include_bytes!("../asset/logo.ico");
+    const ICON_BYTES: &[u8] = include_bytes!("../asset/logo_s.ico");
 
     // 使用 image 解码 ico
     let image = ImageReader::new(Cursor::new(ICON_BYTES))

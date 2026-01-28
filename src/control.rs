@@ -24,7 +24,7 @@ impl Control {
 
         // 创建菜单项
         // 启用/禁用热键
-        let toggle_hotkey = CheckMenuItem::new("Enable Hotkey", true, false, None);
+        let toggle_hotkey = CheckMenuItem::new("Enable Hotkey(Alt+A)", true, false, None);
 
         // 立即截图
         let screentshot = MenuItem::new("Take Screenshot", true, None);
@@ -98,7 +98,7 @@ impl Control {
 
 fn load_icon() -> Icon {
     // 编译期嵌入
-    const ICON_BYTES: &[u8] = include_bytes!("../asset/logo.ico");
+    const ICON_BYTES: &[u8] = include_bytes!("../asset/logo_s.ico");
 
     // 使用 image 解码 ico
     let image = ImageReader::new(Cursor::new(ICON_BYTES))
