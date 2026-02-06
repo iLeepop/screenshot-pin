@@ -10,6 +10,7 @@ use winit::{
     event_loop::{ActiveEventLoop, OwnedDisplayHandle},
     platform::windows::{CornerPreference, WindowAttributesExtWindows},
     window::{Icon, Window, WindowLevel},
+    keyboard::{Key},
 };
 
 use crate::AppEvent;
@@ -200,6 +201,23 @@ impl PreviewWindow {
 
             WindowEvent::Focused(_) => {
                 // 处理窗口聚焦事件
+            }
+
+            // 处理键盘输入事件
+            WindowEvent::KeyboardInput { event, .. } => {
+                // 处理键盘输入事件
+                match event.logical_key.as_ref() {
+                    // 保存到剪切板
+                    Key::Character("s") => {
+                        println!("save to clipboard");
+                        if let Some(image) = &self.image {
+                            if let Err(_) = copy_image_to_clipboard(image.to_vec(), image.width(), image.height()) {
+                                println!("save to clipboard failed.");
+                            }
+                        }
+                    }
+                    _ => {}
+                }
             }
 
             WindowEvent::MouseInput { state, button, .. } => {
@@ -431,4 +449,26 @@ fn load_window_icon() -> Icon {
     let rgba = image.into_raw();
 
     Icon::from_rgba(rgba, width, height).expect("create tray icon failed")
+}
+
+// 拷贝图片到剪贴板
+fn copy_image_to_clipboard(
+    rgba: Vec<u8>,
+    width: u32,
+    height: u32,
+) -> Result<(), Box<dyn std::error::Error>> {
+
+    use arboard::{Clipboard, ImageData};
+    use std::borrow::Cow;
+
+    let mut clipboard = Clipboard::new()?;
+
+    let image = ImageData {
+        width: width as usize,
+        height: height as usize,
+        bytes: Cow::Owned(rgba),
+    };
+
+    clipboard.set_image(image)?;
+    Ok(())
 }

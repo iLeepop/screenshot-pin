@@ -15,6 +15,7 @@ winit = "0.30.12"
 softbuffer = "0.4.1"
 raw-window-handle = "0.6"
 xcap = "0.8.1"
+arboard = "3.6.1"
 chrono = "0.4.43"
 tray-icon = "0.21.3"
 image = { version = "0.25.9", features = ["png", "ico"] }
@@ -30,7 +31,7 @@ windows = { version = "0.62.2", features = [
 [build-dependencies]
 winres = "0.1.12"
 
-[workspace]
-members = [
-    "example/winit-fullscreen"
-]
+# [workspace]
+# members = [
+#     "example/winit-fullscreen"
+# ]
