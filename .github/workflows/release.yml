@@ -29,8 +29,8 @@ jobs:
         id: version
         run: |
           git fetch --tags
-          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "version=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$(git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)" >> $GITHUB_OUTPUT
+        shell: bash
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
