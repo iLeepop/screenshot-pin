@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -39,7 +41,6 @@ jobs:
           name: Release ${{ steps.version.outputs.version }}
           draft: false
           prerelease: false
-          fail_on_exist: false
           files: target/release/sspin.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
