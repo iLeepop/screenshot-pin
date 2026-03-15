@@ -117,7 +117,7 @@ impl ScreenshotApp {
         let proxy = self.event_proxy.clone();
 
         std::thread::spawn(move || {
-            use rdev::{Event, EventType, Key, listen};
+            use rdev::{listen, Event, EventType, Key};
 
             listen(move |event: Event| {
                 // 先检查热键是否启用
@@ -284,6 +284,19 @@ impl ApplicationHandler<AppEvent> for ScreenshotApp {
 
         // 必须在当前作用域内才能执行的操作 提前判断
         match new_event {
+            // 处理窗口销毁事件
+            WindowEvent::Destroyed => {
+                if Some(window_id) == self.overlay_window_id {
+                    self.overlay_window = None;
+                    self.overlay_window_id = None;
+                }
+
+                if self.preview_windows.contains_key(&window_id) {
+                    self.preview_windows.remove(&window_id);
+                    println!("Preview window removed from registry: {:?}", window_id);
+                }
+            }
+
             // 处理窗口关闭请求
             WindowEvent::CloseRequested => {
                 if Some(window_id) == self.overlay_window_id {
@@ -308,10 +321,6 @@ impl ApplicationHandler<AppEvent> for ScreenshotApp {
                             println!("Escape key pressed, closing overlay if exists.");
                             // 在overlay窗口中按下Esc键，关闭overlay
                             self.close_overlay();
-                        }
-
-                        if let Some(_) = self.preview_windows.get(&window_id) {
-                            self.destory_preview(window_id);
                         }
                     }
                     _ => {}
@@ -360,7 +369,7 @@ impl ApplicationHandler<AppEvent> for ScreenshotApp {
                 println!("Resetting...");
                 self.close_overlay();
             }
-
+            
             AppEvent::MenuEvent(event) => {
                 println!("Menu event received: {:?}\n", event);
                 if let Some(control) = &self.control {
@@ -420,22 +429,18 @@ fn run_event_loop(app: &mut ScreenshotApp, event_loop: EventLoop<AppEvent>) {
 
 // 检测windows系统 该应用进程是否已经开启
 fn ensure_single_instance() -> bool {
+    use windows::core::PCWSTR;
     use windows::Win32::{
         Foundation::{GetLastError, ERROR_ALREADY_EXISTS},
         System::Threading::CreateMutexW,
     };
-    use windows::core::PCWSTR;
 
     let name = "Global\\SSPIN_SingleInstance";
 
     let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
 
     unsafe {
-        let handle = CreateMutexW(
-            None,
-            false,
-            PCWSTR(wide.as_ptr()),
-        );
+        let handle = CreateMutexW(None, false, PCWSTR(wide.as_ptr()));
 
         if handle.is_err() {
             return false;

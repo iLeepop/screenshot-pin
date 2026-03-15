@@ -2,8 +2,8 @@ use crate::AppEvent;
 use image::ImageReader;
 use std::{io::Cursor, sync::Arc};
 use tray_icon::{
-    Icon, TrayIconBuilder,
     menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem},
+    Icon, TrayIconBuilder,
 };
 use winit::event_loop::EventLoopProxy;
 

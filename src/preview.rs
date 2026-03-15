@@ -12,7 +12,7 @@ use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, OwnedDisplayHandle},
-    keyboard::Key,
+    keyboard::{Key, NamedKey},
     platform::windows::{CornerPreference, WindowAttributesExtWindows},
     window::{Icon, Window, WindowLevel},
 };
@@ -183,7 +183,7 @@ impl PreviewWindow {
         _event_loop: &ActiveEventLoop,
         _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
-        _proxy_event: Arc<winit::event_loop::EventLoopProxy<AppEvent>>,
+        _: Arc<winit::event_loop::EventLoopProxy<AppEvent>>,
     ) {
         match event {
             WindowEvent::RedrawRequested => {
@@ -202,6 +202,11 @@ impl PreviewWindow {
 
                 let img_width = self.image.as_ref().unwrap().width();
                 let img_height = self.image.as_ref().unwrap().height();
+
+                // 窗口最小化时尺寸为0，跳过处理
+                if win_width == 0 || win_height == 0 {
+                    return;
+                }
 
                 if let Err(e) = surface.resize(
                     NonZeroU32::new(win_width).unwrap(),
@@ -276,12 +281,38 @@ impl PreviewWindow {
 
             // 处理键盘输入事件
             WindowEvent::KeyboardInput { event, .. } => {
-                // 只处理按键按下事件
-                if event.state != ElementState::Pressed {
+                // 只处理按键按下事件，忽略重复事件
+                if event.state != ElementState::Pressed || event.repeat {
                     return;
                 }
                 // 处理键盘输入事件
                 match event.logical_key.as_ref() {
+                    // 关闭预览窗口
+                    Key::Named(NamedKey::Escape) => {
+                        let wid = _window_id;
+                        println!(
+                            "[Preview {:?}] ESC pressed (repeat: {}), will send ClosePreview",
+                            wid, event.repeat
+                        );
+                        // if let Err(e) =
+                        //     proxy_event.send_event(AppEvent::ClosePreview { window_id: wid })
+                        // {
+                        //     eprintln!("Failed to send ClosePreview event: {}", e);
+                        // }
+                    }
+                    // 关闭预览窗口
+                    Key::Character("q") => {
+                        let wid = _window_id;
+                        println!(
+                            "[Preview {:?}] q pressed (repeat: {}), will send ClosePreview",
+                            wid, event.repeat
+                        );
+                        // if let Err(e) =
+                        //     proxy_event.send_event(AppEvent::ClosePreview { window_id: wid })
+                        // {
+                        //     eprintln!("Failed to send ClosePreview event: {}", e);
+                        // }
+                    }
                     // 保存到剪切板
                     Key::Character("s") => {
                         println!("save to clipboard");
