@@ -2,15 +2,19 @@ use chrono::{Datelike, Timelike};
 use image::{ImageReader, RgbaImage};
 use softbuffer::{Context, Surface};
 use std::{
-    io::Cursor, num::NonZeroU32, rc::Rc, sync::{Arc, Mutex}, time::{Duration, Instant}
+    io::Cursor,
+    num::NonZeroU32,
+    rc::Rc,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, OwnedDisplayHandle},
+    keyboard::Key,
     platform::windows::{CornerPreference, WindowAttributesExtWindows},
     window::{Icon, Window, WindowLevel},
-    keyboard::{Key},
 };
 
 use crate::AppEvent;
@@ -30,26 +34,47 @@ pub struct ClickState {
     pub last_click: Option<Instant>,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct Rect {
+    x1: i32,
+    y1: i32,
+    x2: i32,
+    y2: i32,
+}
+
+pub struct DrawState {
+    pub is_drawing: bool,
+    pub is_dragging: bool,
+    pub start_x: i32,
+    pub start_y: i32,
+    pub current_x: i32,
+    pub current_y: i32,
+}
+
 pub struct PreviewWindow {
     pub preview_win: Option<Rc<Window>>,
     pub image: Option<image::RgbaImage>,
     pub buffer: Option<Vec<u32>>,
+    base_title: String,
 
     pub surface: Option<Surface<OwnedDisplayHandle, Rc<Window>>>,
     pub context: Option<Context<OwnedDisplayHandle>>,
 
     pub view_state: ViewState,
     pub click_state: ClickState,
+    pub draw_state: DrawState,
 
     is_pinned: Arc<Mutex<bool>>,
 }
 
 impl PreviewWindow {
     pub fn new(image: RgbaImage) -> Self {
+        let base_title = timestamp_title();
         Self {
             preview_win: None,
             image: Some(image),
             buffer: None,
+            base_title,
 
             surface: None,
             context: None,
@@ -65,6 +90,15 @@ impl PreviewWindow {
             },
 
             click_state: ClickState { last_click: None },
+
+            draw_state: DrawState {
+                is_drawing: false,
+                is_dragging: false,
+                start_x: 0,
+                start_y: 0,
+                current_x: 0,
+                current_y: 0,
+            },
 
             is_pinned: Arc::new(Mutex::new(false)),
         }
@@ -159,39 +193,76 @@ impl PreviewWindow {
                     return;
                 };
 
-                let w_width = self.image.as_ref().unwrap().width();
-                let w_height = self.image.as_ref().unwrap().height();
-                let width = self.image.as_ref().unwrap().width();
-                let height = self.image.as_ref().unwrap().height();
+                let Some(preview_win) = &self.preview_win else {
+                    return;
+                };
+
+                let win_width = preview_win.inner_size().width;
+                let win_height = preview_win.inner_size().height;
+
+                let img_width = self.image.as_ref().unwrap().width();
+                let img_height = self.image.as_ref().unwrap().height();
+
+                if let Err(e) = surface.resize(
+                    NonZeroU32::new(win_width).unwrap(),
+                    NonZeroU32::new(win_height).unwrap(),
+                ) {
+                    eprintln!("Failed to resize surface: {}", e);
+                    return;
+                }
 
                 let mut buffer = surface.buffer_mut().unwrap();
 
-                if let Some(buffer_data) = &self.buffer {
-                    for sy in 0..w_height {
-                        for sx in 0..w_width {
-                            let ix = (sx as f32 - self.view_state.offset_x) / self.view_state.scale;
-                            let iy = (sy as f32 - self.view_state.offset_y) / self.view_state.scale;
-                            if ix >= 0.0 && iy >= 0.0 && ix < width as f32 && iy < height as f32 {
-                                let px = ix as u32;
-                                let py = iy as u32;
+                let scale = self.view_state.scale;
+                let offset_x = self.view_state.offset_x;
+                let offset_y = self.view_state.offset_y;
 
-                                buffer[(sy * w_width + sx) as usize] =
-                                    buffer_data[(py * width + px) as usize];
-                            } else {
-                                buffer[(sy * w_width + sx) as usize] = 0x00202020; // 背景色
+                // 计算窗口对应的图像可见范围（视口裁剪优化）
+                let view_x1 = (0.0 - offset_x) / scale;
+                let view_y1 = (0.0 - offset_y) / scale;
+                let view_x2 = (win_width as f32 - offset_x) / scale;
+                let view_y2 = (win_height as f32 - offset_y) / scale;
+
+                // 裁剪到图像边界
+                let start_px = (view_x1.max(0.0) as u32).min(img_width);
+                let start_py = (view_y1.max(0.0) as u32).min(img_height);
+                let end_px = (view_x2.ceil() as u32).min(img_width);
+                let end_py = (view_y2.ceil() as u32).min(img_height);
+
+                if let Some(buffer_data) = &self.buffer {
+                    // 填充背景色
+                    let bg_color: u32 = 0x00202020;
+                    buffer.fill(bg_color);
+
+                    // 只渲染可见的图像像素（正向映射）
+                    for py in start_py..end_py {
+                        for px in start_px..end_px {
+                            // 计算图像像素在窗口中的位置
+                            let sx = (px as f32 * scale + offset_x) as u32;
+                            let sy = (py as f32 * scale + offset_y) as u32;
+
+                            if sx < win_width && sy < win_height {
+                                buffer[(sy * win_width + sx) as usize] =
+                                    buffer_data[(py * img_width + px) as usize];
                             }
                         }
                     }
 
-                    // 缓存数据存在，直接使用
-                    // buffer.copy_from_slice(buffer_data.as_slice());
-                } else {
-                    for (x, y, pixel) in self.image.as_ref().unwrap().enumerate_pixels() {
-                        let red = pixel.0[0] as u32;
-                        let green = pixel.0[1] as u32;
-                        let blue = pixel.0[2] as u32;
-                        let color = blue | (green << 8) | (red << 16);
-                        buffer[(y * width + x) as usize] = color;
+                    // 渲染正在绘制的矩形（仅预览）
+                    if self.draw_state.is_drawing && self.draw_state.is_dragging {
+                        let current_rect = Rect {
+                            x1: self.draw_state.start_x.min(self.draw_state.current_x),
+                            y1: self.draw_state.start_y.min(self.draw_state.current_y),
+                            x2: self.draw_state.start_x.max(self.draw_state.current_x),
+                            y2: self.draw_state.start_y.max(self.draw_state.current_y),
+                        };
+                        draw_rectangle(
+                            &mut buffer,
+                            win_width,
+                            win_height,
+                            &current_rect,
+                            0x0000FF00,
+                        );
                     }
                 }
 
@@ -205,52 +276,162 @@ impl PreviewWindow {
 
             // 处理键盘输入事件
             WindowEvent::KeyboardInput { event, .. } => {
+                // 只处理按键按下事件
+                if event.state != ElementState::Pressed {
+                    return;
+                }
                 // 处理键盘输入事件
                 match event.logical_key.as_ref() {
                     // 保存到剪切板
                     Key::Character("s") => {
                         println!("save to clipboard");
                         if let Some(image) = &self.image {
-                            if let Err(_) = copy_image_to_clipboard(image.to_vec(), image.width(), image.height()) {
+                            if let Err(_) = copy_image_to_clipboard(
+                                image.to_vec(),
+                                image.width(),
+                                image.height(),
+                            ) {
                                 println!("save to clipboard failed.");
                             }
                         }
+                    }
+                    // 切换绘制模式
+                    Key::Character("r") => {
+                        self.draw_state.is_drawing = !self.draw_state.is_drawing;
+                        println!(
+                            "Drawing mode: {}",
+                            if self.draw_state.is_drawing {
+                                "ON"
+                            } else {
+                                "OFF"
+                            }
+                        );
+                        self.preview_win.as_ref().unwrap().request_redraw();
+                        self.update_title();
                     }
                     _ => {}
                 }
             }
 
             WindowEvent::MouseInput { state, button, .. } => {
-                // 处理鼠标输入事件
+                // 在绘制模式下，左键用于绘制矩形
+                if self.draw_state.is_drawing {
+                    match button {
+                        MouseButton::Left => {
+                            if state == ElementState::Pressed {
+                                self.draw_state.is_dragging = true;
+                                self.draw_state.start_x = self.draw_state.current_x;
+                                self.draw_state.start_y = self.draw_state.current_y;
+                            } else if state == ElementState::Released && self.draw_state.is_dragging
+                            {
+                                self.draw_state.is_dragging = false;
 
-                // 处理 preview 窗口的鼠标输入事件
-                match button {
-                    MouseButton::Right => {
-                        match state {
-                            ElementState::Pressed => {
-                                // 右键点击 pin preview 窗口
+                                let x1 = self.draw_state.start_x.min(self.draw_state.current_x);
+                                let y1 = self.draw_state.start_y.min(self.draw_state.current_y);
+                                let x2 = self.draw_state.start_x.max(self.draw_state.current_x);
+                                let y2 = self.draw_state.start_y.max(self.draw_state.current_y);
+
+                                if x2 > x1 && y2 > y1 {
+                                    if let Some(image) = &mut self.image {
+                                        let scale = self.view_state.scale;
+                                        let offset_x = self.view_state.offset_x;
+                                        let offset_y = self.view_state.offset_y;
+
+                                        let img_x1 = ((x1 as f32 - offset_x) / scale) as i32;
+                                        let img_y1 = ((y1 as f32 - offset_y) / scale) as i32;
+                                        let img_x2 = ((x2 as f32 - offset_x) / scale) as i32;
+                                        let img_y2 = ((y2 as f32 - offset_y) / scale) as i32;
+
+                                        let img_width = image.width() as i32;
+                                        let img_height = image.height() as i32;
+
+                                        if img_x1 >= img_width
+                                            || img_y1 >= img_height
+                                            || img_x2 <= 0
+                                            || img_y2 <= 0
+                                        {
+                                            println!("Rectangle is outside image bounds, skipping");
+                                        } else {
+                                            let cx1 = img_x1.max(0);
+                                            let cy1 = img_y1.max(0);
+                                            let cx2 = img_x2.min(img_width);
+                                            let cy2 = img_y2.min(img_height);
+
+                                            for px in cx1..cx2 {
+                                                if cy1 >= 0 && cy1 < img_height {
+                                                    image.put_pixel(
+                                                        px as u32,
+                                                        cy1 as u32,
+                                                        image::Rgba([255, 0, 0, 255]),
+                                                    );
+                                                }
+                                                if cy2 > 0 && cy2 - 1 < img_height {
+                                                    image.put_pixel(
+                                                        px as u32,
+                                                        (cy2 - 1) as u32,
+                                                        image::Rgba([255, 0, 0, 255]),
+                                                    );
+                                                }
+                                            }
+                                            for py in cy1..cy2 {
+                                                if cx1 >= 0 && cx1 < img_width {
+                                                    image.put_pixel(
+                                                        cx1 as u32,
+                                                        py as u32,
+                                                        image::Rgba([255, 0, 0, 255]),
+                                                    );
+                                                }
+                                                if cx2 > 0 && cx2 - 1 < img_width {
+                                                    image.put_pixel(
+                                                        (cx2 - 1) as u32,
+                                                        py as u32,
+                                                        image::Rgba([255, 0, 0, 255]),
+                                                    );
+                                                }
+                                            }
+                                            println!(
+                                                "Rectangle written to image: ({}, {}) - ({}, {})",
+                                                cx1, cy1, cx2, cy2
+                                            );
+                                        }
+                                    }
+                                    self.regenerate_buffer();
+                                }
+                                self.preview_win.as_ref().unwrap().request_redraw();
+                            }
+                        }
+
+                        MouseButton::Middle => {
+                            if state == ElementState::Pressed {
+                                self.view_state.dragging = true;
+                            } else if state == ElementState::Released {
+                                self.view_state.dragging = false;
+                            }
+                        }
+                        _ => {}
+                    }
+                } else {
+                    // 非绘制模式下的鼠标处理
+                    match button {
+                        MouseButton::Right => {
+                            if state == ElementState::Pressed {
                                 println!("Right mouse button clicked, pin preview.");
                                 self.pin_window();
                             }
-
-                            _ => {}
                         }
-                    }
 
-                    MouseButton::Left => {
-                        match state {
-                            ElementState::Pressed => {
-                                self.view_state.dragging = true;
-                            }
-                            ElementState::Released => {
-                                self.view_state.dragging = false;
-
+                        MouseButton::Left => {
+                            if state == ElementState::Pressed {
+                                // 左键拖动窗口
+                                if let Some(win) = &self.preview_win {
+                                    let _ = win.drag_window();
+                                }
+                            } else if state == ElementState::Released {
                                 let now = Instant::now();
                                 let double_click_threshold = Duration::from_millis(300);
 
                                 if let Some(last) = self.click_state.last_click {
                                     if now.duration_since(last) < double_click_threshold {
-                                        // 双击
                                         self.reset_view();
                                         self.click_state.last_click = None;
                                     } else {
@@ -261,15 +442,21 @@ impl PreviewWindow {
                                 }
                             }
                         }
+
+                        MouseButton::Middle => {
+                            if state == ElementState::Pressed {
+                                self.view_state.dragging = true;
+                            } else if state == ElementState::Released {
+                                self.view_state.dragging = false;
+                            }
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
 
             WindowEvent::CursorMoved { position, .. } => {
                 // 处理鼠标移动事件
-
-                // 处理 preview 窗口的鼠标移动事件
                 let x = position.x as f32;
                 let y = position.y as f32;
 
@@ -281,10 +468,23 @@ impl PreviewWindow {
                     self.view_state.offset_y += dy;
                 }
 
+                // 更新绘制模式下的鼠标位置
+                if self.draw_state.is_drawing {
+                    self.draw_state.current_x = x as i32;
+                    self.draw_state.current_y = y as i32;
+                    // 绘制模式下：中键拖拽视图 或 左键拖拽矩形时都重绘
+                    if self.draw_state.is_dragging || self.view_state.dragging {
+                        self.preview_win.as_ref().unwrap().request_redraw();
+                    }
+                }
+
                 self.view_state.last_mouse_x = x;
                 self.view_state.last_mouse_y = y;
 
-                self.preview_win.as_ref().unwrap().request_redraw();
+                // 非绘制模式时始终重绘
+                if !self.draw_state.is_drawing {
+                    self.preview_win.as_ref().unwrap().request_redraw();
+                }
             }
 
             WindowEvent::MouseWheel { delta, .. } => {
@@ -357,7 +557,7 @@ impl PreviewWindow {
         Ok(())
     }
 
-    pub fn pin_window(&self) {
+    pub fn pin_window(&mut self) {
         if let Some(win) = &self.preview_win {
             if let Ok(mut is_pinned) = self.is_pinned.lock() {
                 if *is_pinned {
@@ -369,7 +569,27 @@ impl PreviewWindow {
                     *is_pinned = true;
                     println!("preview pinned on top");
                 }
+            } else {
+                return;
+            };
+
+            // 更新标题
+            self.update_title();
+        }
+    }
+
+    fn update_title(&mut self) {
+        if let Some(win) = &self.preview_win {
+            let mut title = self.base_title.clone();
+            if self.draw_state.is_drawing {
+                title.push_str(" [draw-mode]");
             }
+            if let Ok(is_pinned) = self.is_pinned.lock() {
+                if *is_pinned {
+                    title.push_str(" [PIN]");
+                }
+            }
+            let _ = win.set_title(&title);
         }
     }
 
@@ -414,6 +634,22 @@ impl PreviewWindow {
         self.view_state.offset_x = (new_size.width as f32 - img_w * self.view_state.scale) * 0.5;
         self.view_state.offset_y = (new_size.height as f32 - img_h * self.view_state.scale) * 0.5;
     }
+
+    fn regenerate_buffer(&mut self) {
+        let img = self.image.as_ref().unwrap();
+        let img_width = img.width();
+        let img_height = img.height();
+
+        let mut new_buffer = vec![0u32; (img_width * img_height) as usize];
+        for (x, y, pixel) in img.enumerate_pixels() {
+            let red = pixel.0[0] as u32;
+            let green = pixel.0[1] as u32;
+            let blue = pixel.0[2] as u32;
+            let color = blue | (green << 8) | (red << 16);
+            new_buffer[(y * img_width + x) as usize] = color;
+        }
+        self.buffer = Some(new_buffer);
+    }
 }
 
 pub fn timestamp_title() -> String {
@@ -457,7 +693,6 @@ fn copy_image_to_clipboard(
     width: u32,
     height: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
-
     use arboard::{Clipboard, ImageData};
     use std::borrow::Cow;
 
@@ -471,4 +706,31 @@ fn copy_image_to_clipboard(
 
     clipboard.set_image(image)?;
     Ok(())
+}
+
+fn draw_rectangle(buffer: &mut [u32], win_width: u32, win_height: u32, rect: &Rect, color: u32) {
+    let x1 = rect.x1.max(0) as u32;
+    let y1 = rect.y1.max(0) as u32;
+    let x2 = rect.x2.min(win_width as i32) as u32;
+    let y2 = rect.y2.min(win_height as i32) as u32;
+
+    // 绘制水平线（上下边）
+    for x in x1..x2 {
+        if y1 < win_height {
+            buffer[(y1 * win_width + x) as usize] = color;
+        }
+        if y2 > 0 && y2 - 1 < win_height {
+            buffer[((y2 - 1) * win_width + x) as usize] = color;
+        }
+    }
+
+    // 绘制垂直线（左右边）
+    for y in y1..y2 {
+        if x1 < win_width {
+            buffer[(y * win_width + x1) as usize] = color;
+        }
+        if x2 > 0 && x2 - 1 < win_width {
+            buffer[(y * win_width + (x2 - 1)) as usize] = color;
+        }
+    }
 }
