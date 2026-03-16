@@ -20,14 +20,21 @@ use winit::{
 use crate::AppEvent;
 
 pub struct ViewState {
-    pub scale: f32,    // 缩放比例
-    pub offset_x: f32, // X偏移
-    pub offset_y: f32, // Y偏移
+    pub scale: f32,
+    pub offset_x: f32,
+    pub offset_y: f32,
 
-    // 拖拽状态
-    pub dragging: bool,    // 是否正在拖拽
-    pub last_mouse_x: f32, // 上次鼠标X位置
-    pub last_mouse_y: f32, // 上次鼠标Y位置
+    pub dragging: bool,
+    pub last_mouse_x: f32,
+    pub last_mouse_y: f32,
+
+    pub render_mode: RenderMode,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum RenderMode {
+    Point,
+    Fill,
 }
 
 pub struct ClickState {
@@ -87,6 +94,8 @@ impl PreviewWindow {
                 dragging: false,
                 last_mouse_x: 0.0,
                 last_mouse_y: 0.0,
+
+                render_mode: RenderMode::Fill,
             },
 
             click_state: ClickState { last_click: None },
@@ -235,20 +244,39 @@ impl PreviewWindow {
                 let end_py = (view_y2.ceil() as u32).min(img_height);
 
                 if let Some(buffer_data) = &self.buffer {
-                    // 填充背景色
                     let bg_color: u32 = 0x00202020;
                     buffer.fill(bg_color);
 
-                    // 只渲染可见的图像像素（正向映射）
-                    for py in start_py..end_py {
-                        for px in start_px..end_px {
-                            // 计算图像像素在窗口中的位置
-                            let sx = (px as f32 * scale + offset_x) as u32;
-                            let sy = (py as f32 * scale + offset_y) as u32;
+                    let render_mode = self.view_state.render_mode;
 
-                            if sx < win_width && sy < win_height {
-                                buffer[(sy * win_width + sx) as usize] =
-                                    buffer_data[(py * img_width + px) as usize];
+                    if render_mode == RenderMode::Point {
+                        for py in start_py..end_py {
+                            for px in start_px..end_px {
+                                let sx = (px as f32 * scale + offset_x) as u32;
+                                let sy = (py as f32 * scale + offset_y) as u32;
+
+                                if sx < win_width && sy < win_height {
+                                    buffer[(sy * win_width + sx) as usize] =
+                                        buffer_data[(py * img_width + px) as usize];
+                                }
+                            }
+                        }
+                    } else {
+                        for dest_y in 0..win_height {
+                            for dest_x in 0..win_width {
+                                let src_x = (dest_x as f32 - offset_x) / scale;
+                                let src_y = (dest_y as f32 - offset_y) / scale;
+
+                                if src_x >= 0.0
+                                    && src_x < img_width as f32
+                                    && src_y >= 0.0
+                                    && src_y < img_height as f32
+                                {
+                                    let px = src_x as u32;
+                                    let py = src_y as u32;
+                                    buffer[(dest_y * win_width + dest_x) as usize] =
+                                        buffer_data[(py * img_width + px) as usize];
+                                }
                             }
                         }
                     }
@@ -435,8 +463,10 @@ impl PreviewWindow {
                         MouseButton::Middle => {
                             if state == ElementState::Pressed {
                                 self.view_state.dragging = true;
+                                self.view_state.render_mode = RenderMode::Point;
                             } else if state == ElementState::Released {
                                 self.view_state.dragging = false;
+                                self.view_state.render_mode = RenderMode::Fill;
                             }
                         }
                         _ => {}
@@ -477,8 +507,10 @@ impl PreviewWindow {
                         MouseButton::Middle => {
                             if state == ElementState::Pressed {
                                 self.view_state.dragging = true;
+                                self.view_state.render_mode = RenderMode::Point;
                             } else if state == ElementState::Released {
                                 self.view_state.dragging = false;
+                                self.view_state.render_mode = RenderMode::Fill;
                             }
                         }
                         _ => {}
